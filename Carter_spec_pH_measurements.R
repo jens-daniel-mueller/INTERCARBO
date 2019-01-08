@@ -1,38 +1,14 @@
+#### load required packages ####
+
 library(data.table)
 library(ggplot2)
 library(tidyverse)
 library(lubridate)
 
 
-#### load raw data files, select and rename columns #### 
 
-setwd("C:/Mueller_Jens_Data/Projects/181122_TNA_Oslo_intercomparison_pH_pCO2/data/Carter_spec_pH")
-df <- read.delim("181125_Oslo_Mueller_Datafile",  header=FALSE)
-
-df <- data.table (df[,c(seq(3,7,1), seq(9,13,1), 15)])
-names(df) <- 
-  c("date", "time", "dye", "sample", "Rep", "A5", "A4", "A7", "Ai", "Tem", "Sal")
-
-
-#### Subset data frame and calculate R value ####
-
-df <- df[Rep != 0]
-df$Rspec <- (df$A5-df$A7) / (df$A4-df$A7)
-
-
-#### Definitions of equations to calculate pH from measured ####
-#### Salinity (Sal), Temperature in K (Tem) and mCP absorption ratio (Rspec = A434/A578)
-
-#### Mosley et al. 2004
-
-pHT.Mosley <- function(Sal, Tem, Rspec,
-                       e1 = 0.00691, e2 = 2.222, e3 = 0.1331) {
-  (1245.69/Tem) + 4.4572353 - (0.3238*(Sal^0.5)) + (0.0807*Sal) - (0.01157*(Sal^1.5)) + (0.000694*(Sal^2)) +
-    log10( (Rspec-e1) / (e2-Rspec*e3) ) 
-}
-
-
-#### Mueller and Rehder (2018)
+#### Define function to calculate pHT from spectrophotometric measurements ####
+#### according to Mueller and Rehder (2018)
 
 pHT.Mueller <- function(Sal, Tem, Rspec){
   
@@ -61,7 +37,6 @@ pHT.Mueller <- function(Sal, Tem, Rspec){
     #second set of coefficients includes the definition of mCP absorptivity ratios e1 and e3/e3
     #as determined by Liu et al. (2011) and defines the log-term calculation 
     
-    
     log10(
       (Rspec -
          (-0.007762 + 4.5174e-5*Tem)) /
@@ -69,53 +44,33 @@ pHT.Mueller <- function(Sal, Tem, Rspec){
     )
 }
 
-
-#### Calculate sample pHT value according to two mCP parameterizations ####
-
-df$pHT.Mueller <- pHT.Mueller(df$Sal, df$Tem, df$Rspec)
-df$pHT.Mosley <- pHT.Mosley(df$Sal, df$Tem, df$Rspec)
-
-
-#### subset data set for buffer solutions (TRIS) and subsample from test tank (SW) ####
-
-df$solution <- substr(df$sample, 1, 3)
-
-TRIS <- df[solution == "TRI"]
-SW <- df[solution != "TRI"]
-
-rm(df)
-
-
-
-#### Evaluate measurements performed on PTB TRIS buffer solutions at S = 5, 20, and 35 ####
-
-#### pHT model of TRIS buffer solutions to calculate target values ####
+#### Define function to calculate target pHT of TRIS buffer solutions ####
 
 pHT.TRIS <- function(Sal, Tem, b_Tris){
   -327.3307 -
-  2.400270 * Sal +
-  8.124630e-2 * Sal^2 -
-  9.635344e-4 * Sal^3 -
-  
-  9.103207e-2 * Tem -
-  1.963311e-3 * Sal * Tem +
-  6.430229e-5 * Sal^2 * Tem -
-  7.510992e-7 * Sal^3 * Tem +
-  
-  56.92797 * log(Tem) +
-  5.235889e-1 * Sal * log(Tem) -
-  1.7602e-2 * Sal^2 * log(Tem) +
-  2.082387e-4 * Sal^3 * log(Tem) +
-  
-  11382.97 * (1/Tem) -
-  
-  2.417045 * b_Tris +
-  7.645221e-2 * b_Tris * Sal +
-  1.122392e-2 * b_Tris * Tem -
-  3.248381e-4 * b_Tris * Sal * Tem -
-  
-  4.161537 * b_Tris^2 +
-  6.143395e-2 * b_Tris^2 * Sal
+    2.400270 * Sal +
+    8.124630e-2 * Sal^2 -
+    9.635344e-4 * Sal^3 -
+    
+    9.103207e-2 * Tem -
+    1.963311e-3 * Sal * Tem +
+    6.430229e-5 * Sal^2 * Tem -
+    7.510992e-7 * Sal^3 * Tem +
+    
+    56.92797 * log(Tem) +
+    5.235889e-1 * Sal * log(Tem) -
+    1.7602e-2 * Sal^2 * log(Tem) +
+    2.082387e-4 * Sal^3 * log(Tem) +
+    
+    11382.97 * (1/Tem) -
+    
+    2.417045 * b_Tris +
+    7.645221e-2 * b_Tris * Sal +
+    1.122392e-2 * b_Tris * Tem -
+    3.248381e-4 * b_Tris * Sal * Tem -
+    
+    4.161537 * b_Tris^2 +
+    6.143395e-2 * b_Tris^2 * Sal
 }
 
 
@@ -123,40 +78,93 @@ pHT.TRIS <- function(Sal, Tem, b_Tris){
 pHT.TRIS(20, 298.15, 0.04)
 
 
-#### Subset TRIS data frame for high quality solutions provided by Frank Bastkowski (PTB) ####
+#### Load raw data files, select and rename columns #### 
+
+setwd("C:/Mueller_Jens_Data/Projects/181122_TNA_Oslo_intercomparison_pH_pCO2/data/Carter_spec_pH")
+df <- read.delim("181125_Oslo_Mueller_Datafile",  header=FALSE)
+
+df <- data.table (df[,c(seq(3,7,1), seq(9,13,1), 15)])
+names(df) <- 
+  c("date", "time", "dye", "sample", "Rep", "A5", "A4", "A7", "Ai", "Tem", "Sal")
+
+#### Correct date of samples that were measured the next day after sampling by -1 ####
+
+df[sample=="T10S35PC800-2038"]$date <- "11/23/2018"
+df[sample=="T10S20PC800-2120"]$date <- "11/24/2018"
+df[sample=="T10S05PC200-2145"]$date <- "11/25/2018"
+
+
+#### Remove measurements done on test samples ####
+
+df <- df[sample != "T10S35PC400-1509"]
+
+
+#### Subset data frame and calculate R value ####
+
+df <- df[Rep != 0]
+df$Rspec <- (df$A5-df$A7) / (df$A4-df$A7)
+
+#### Calculate sample pHT values ####
+
+df$pHT.Mueller <- pHT.Mueller(df$Sal, df$Tem, df$Rspec)
+
+#### Subset data set for buffer solutions (TRIS) and subsample from test tank (SW) ####
+
+df$solution <- substr(df$sample, 1, 3)
+TRIS <- df[solution == "TRI"]
+SW <- df[solution != "TRI"]
+
+rm(df)
+
+#### Evaluate measurements performed on PTB TRIS buffer solutions at S = 5, 20, and 35 ####
+
+#### calculate target pHT values
+
+TRIS$pHT.target <- pHT.TRIS(TRIS$Sal, TRIS$Tem, 0.04)
+
+#### Subset TRIS data frame for PTB and IOW buffer solutions
 
 TRIS$Source <- substr(TRIS$sample, 6, 8)
 TRIS <- TRIS[Source != "PTB" | Ai < 0.7] #remove one measurement with too high dye concentration
 
-TRIS$pHT.true <- pHT.TRIS(TRIS$Sal, TRIS$Tem, 0.04)
+TRIS.PTB <- TRIS[Source == "PTB"]
+TRIS.IOW <- TRIS[Source == "IOW"]
 
-TRIS[Source == "PTB"] %>% 
+rm(TRIS)
+
+#### Plots
+
+TRIS.PTB %>% 
+  filter(Tem>297) %>% 
   ggplot()+
-  geom_point(aes(Ai, pHT.true, col=date, shape="true"))+
-  geom_point(aes(Ai, pHT.Mueller, col=date, shape="obs"))+
+  geom_point(aes(Ai, pHT.target, col=date, shape="target"))+
+  geom_point(aes(Ai, pHT.Mueller, col=date, shape="observed"))+
   facet_wrap(~Sal, scales = "free_y")+
   xlim(0,0.6)+
   scale_y_continuous(breaks = seq(5,10,0.005))
 
-TRIS[Source == "PTB"] %>% 
-  ggplot()+
-  geom_point(aes(Ai, pHT.Mueller - pHT.true, col=date))+
+TRIS.PTB %>% 
+ggplot()+
+  geom_point(aes(Ai, pHT.Mueller - pHT.target, col=date))+
   facet_wrap(~Sal, scales = "free_y")+
   xlim(0,0.6)+
   scale_y_continuous(breaks = seq(-5,10,0.002))
 
-
-#### Subset TRIS data frame for IOW homemade solutions ####
-
-TRIS[Source == "IOW"] %>% 
-  ggplot()+
-  geom_point(aes(Ai, pHT.true, col=date, shape="true"))+
+TRIS.IOW %>% 
+ggplot()+
+  geom_point(aes(Ai, pHT.target, col=date, shape="target"))+
   geom_point(aes(Ai, pHT.Mueller, col=date, shape="obs"))+
   facet_grid(round(Tem, 0)~Sal, scales = "free_y")+
   xlim(0,0.6)+
   scale_y_continuous(breaks = seq(5,10,0.005))
 
 
+rm(TRIS.IOW, TRIS.PTB)
+
+
+#### Analyse reference pH measurements of samples from test tanks ####
+
+#### Create individual columns for target Temperature, Salinity, and pCO2
 
 SW <-
 data.table(
@@ -169,6 +177,8 @@ data.table(
 SW[time.sample == "NaOH"]$time.sample <- substr( SW[time.sample == "NaOH"]$sample, 18, 21)
 SW$solution <- NULL  
 
+#### Clean data set from errornous measurements and restrict to measurements at 25oC
+
 SW.25 <-  
 SW %>% 
   filter(Tem == 298.15,                       #remove comparison measurement at in-situ temperature
@@ -176,27 +186,41 @@ SW %>%
          sample != "T10S35pC400-1509",        #omit inital test measurements of T10S35pC400-1509
          Rep < 4,                             #remove last replicate potentially affected by gas exchange 
          sample != "T20S20pC200-1050" | Rep != 1 | dye != "p")
+
+
+
+#### transform time and data columns to POSIXct
+
+SW$time.sample <- mdy_hm(paste(SW$date, SW$time.sample ))
+SW.25$time.sample <- mdy_hm(paste(SW.25$date, SW.25$time.sample ))
+
+
+#### Extrapolate measurements to zero dye concentration
   
+
+SW.25.ex <-
+SW.25 %>% 
+  group_by(Tem.target, Sal.target, pCO2.target, time.sample, dye) %>% 
+  summarise(pHT.ex = lm(pHT.Mueller ~ Ai)$coefficients[[1]],
+            slope  = lm(pHT.Mueller ~ Ai)$coefficients[[2]],
+            SD.residuals = sd(lm(pHT.Mueller ~ Ai)$residuals) )  %>% 
+  ungroup()
+
+
+
 SW.25 %>%   
   ggplot()+
   geom_smooth(method = "lm", aes(Ai, pHT.Mueller, linetype=dye), 
               se=FALSE, col = "grey50", fullrange = TRUE)+
-  geom_point(aes(Ai, pHT.Mueller, shape=dye, col=as.factor(Rep) ))+
-  facet_wrap(~Tem.target*Sal.target*pCO2.target, scales = "free_y", ncol =3)+
-  xlim(0,0.8)+
+  geom_point(aes(Ai, pHT.Mueller, col=dye, shape=as.factor(Rep) ))+
+  geom_point(data=SW.25.ex, aes(0, pHT.ex, col=dye, shape="ex" ))+
+  facet_wrap(~Tem.target*Sal.target*pCO2.target*time.sample, scales = "free_y", ncol =3)+
   scale_color_brewer(palette = "Set1")+
   scale_y_continuous(breaks = seq(5,10,0.005)) 
 
-extrapol <-
-SW.25 %>% 
-  group_by(Tem.target, Sal.target, pCO2.target, dye) %>% 
-  summarise(pHT.ex := lm(pHT.Mueller ~ Ai)$coefficients[[1]],
-            slope  := lm(pHT.Mueller ~ Ai)$coefficients[[2]],
-            SD.residuals := sd(lm(pHT.Mueller ~ Ai)$residuals) )  %>% 
-  ungroup()
 
-
-ggplot(extrapol, aes(pHT.ex, slope, col=dye))+
+SW.25.ex %>% 
+ggplot(aes(pHT.ex, slope, col=dye))+
   geom_hline(yintercept = 0)+
   geom_point()+
   geom_errorbar(aes (ymin = slope - SD.residuals, ymax= slope + SD.residuals))+
@@ -204,30 +228,18 @@ ggplot(extrapol, aes(pHT.ex, slope, col=dye))+
 
 
 
-SW.25 %>%   
-  ggplot()+
-  geom_smooth(method = "lm", aes(Ai, pHT.Mueller, linetype=dye), 
-              se=FALSE, col = "grey50", fullrange = TRUE)+
-  geom_point(aes(Ai, pHT.Mueller, shape=dye, col=as.factor(Rep) ))+
-  facet_wrap(~Tem.target*Sal.target*pCO2.target, scales = "free_y", ncol =3)+
-  scale_color_brewer(palette = "Set1")+
-  scale_y_continuous(breaks = seq(5,10,0.005))+
-  geom_point(data=extrapol, aes(0, pHT.ex))
+SW.25.ex.save <-
+  SW.25.ex %>% 
+  filter(dye == "p") %>% 
+  select(-c(dye, slope, SD.residuals)) %>% 
+  arrange(time.sample)
 
 
-SW$time.sample <- mdy_hm(paste(SW$date, SW$time.sample ))
+#### Safe final data set ####
 
 
-
-
-
-
-
-
-
-
-
-
-
-
+setwd("C:/Mueller_Jens_Data/Projects/181122_TNA_Oslo_intercomparison_pH_pCO2/data/_Finalized_datasets")
+write.csv(SW.25.ex.save, "IOW_Carter_pH.csv", row.names = FALSE)
+  
+rm(list=ls())
 
