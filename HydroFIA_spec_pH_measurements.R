@@ -95,6 +95,17 @@ ggplot()+
 ggsave("IOW_Carter_and_HydroFIA_pH_timeseries.jpg", height = 210, width = 297, units = "mm")
 
 
+#### safe finalized data set to file
+
+HF.sw.stabil.safe <-
+  HF.sw.stabil %>% 
+  select(c(timeStamp, salinity, instrument, Tem.target, Sal.target, pCO2.target, pH.Mueller.25)) %>% 
+  arrange(timeStamp)
+
+setwd("C:/Mueller_Jens_Data/Projects/181122_TNA_Oslo_intercomparison_pH_pCO2/data/_Finalized_datasets")
+write.csv(HW.sw.stabil, "IOW_Carter_pH.csv", row.names = FALSE)
+
+
 # HF.sw %>% 
 #   ggplot()+
 #   geom_histogram(aes(temperature))
